@@ -27,7 +27,7 @@ impl<D: RequestHandler> RequestInterceptor<D> {
 impl<D: RequestHandler> RequestHandler for RequestInterceptor<D> {
     async fn handle_request<R: ResponseHandler>(&self, request: &Request, response_handle: R) -> ResponseInfo {
         let qry = request.query();
-        let msg = format!("[{},{},{},{}]", request.src().ip(), qry.query_class(), qry.query_type(), qry.name());
+        let msg = format!("[\"{}\",\"{}\",\"{}\",\"{}\"]", request.src().ip(), qry.query_class(), qry.query_type(), qry.name());
 
         debug!("intercepted request from {msg}");
         self.ws.send_message(request.src().ip(), msg).await;

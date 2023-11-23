@@ -36,6 +36,8 @@
 #![recursion_limit = "128"]
 #![allow(clippy::redundant_clone)]
 
+mod ws;
+
 use std::{
     env, fmt,
     net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs},
@@ -78,6 +80,8 @@ use hickory_server::{
 
 #[cfg(feature = "dnssec")]
 use {hickory_client::rr::rdata::key::KeyUsage, hickory_server::authority::DnssecAuthority};
+
+use crate::ws::RequestInterceptor;
 
 #[cfg(feature = "dnssec")]
 async fn load_keys<A, L>(
@@ -392,9 +396,11 @@ fn main() {
         .flat_map(|x| (*x, listen_port).to_socket_addrs().unwrap())
         .collect();
 
+    let interceptor = RequestInterceptor::new(catalog);
+
     // now, run the server, based on the config
     #[cfg_attr(not(feature = "dns-over-tls"), allow(unused_mut))]
-    let mut server = ServerFuture::new(catalog);
+    let mut server = ServerFuture::new(interceptor);
 
     // load all the listeners
     for udp_socket in &sockaddrs {
@@ -501,9 +507,9 @@ fn main() {
 }
 
 #[cfg(feature = "dns-over-tls")]
-fn config_tls(
+fn config_tls<R: hickory_server::server::RequestHandler>(
     args: &Cli,
-    server: &mut ServerFuture<Catalog>,
+    server: &mut ServerFuture<R>,
     config: &Config,
     tls_cert_config: &TlsCertConfig,
     zone_dir: &Path,
@@ -554,9 +560,9 @@ fn config_tls(
 }
 
 #[cfg(feature = "dns-over-https")]
-fn config_https(
+fn config_https<R: hickory_server::server::RequestHandler>(
     args: &Cli,
-    server: &mut ServerFuture<Catalog>,
+    server: &mut ServerFuture<R>,
     config: &Config,
     tls_cert_config: &TlsCertConfig,
     zone_dir: &Path,
@@ -620,9 +626,9 @@ fn config_https(
 }
 
 #[cfg(feature = "dns-over-quic")]
-fn config_quic(
+fn config_quic<R: hickory_server::server::RequestHandler>(
     args: &Cli,
-    server: &mut ServerFuture<Catalog>,
+    server: &mut ServerFuture<R>,
     config: &Config,
     tls_cert_config: &TlsCertConfig,
     zone_dir: &Path,

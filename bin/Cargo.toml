@@ -101,6 +101,7 @@ name = "hickory-dns"
 path = "src/hickory-dns.rs"
 
 [dependencies]
+async-trait = "0.1.74"
 # clap features:
 # - suggestion for advanced help with error in cli
 # - derive for clap derive api
@@ -124,6 +125,7 @@ tracing-subscriber = { workspace = true, features = [
     "env-filter",
 ] }
 tokio = { workspace = true, features = ["time", "rt"] }
+tokio-tungstenite = "0.20.1"
 hickory-client.workspace = true
 hickory-proto.workspace = true
 hickory-server = { workspace = true, features = ["toml"] }

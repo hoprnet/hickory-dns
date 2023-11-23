@@ -81,7 +81,7 @@ use hickory_server::{
 #[cfg(feature = "dnssec")]
 use {hickory_client::rr::rdata::key::KeyUsage, hickory_server::authority::DnssecAuthority};
 
-use crate::ws::RequestInterceptor;
+use crate::ws::{RequestInterceptor, WsServer};
 
 #[cfg(feature = "dnssec")]
 async fn load_keys<A, L>(
@@ -396,7 +396,8 @@ fn main() {
         .flat_map(|x| (*x, listen_port).to_socket_addrs().unwrap())
         .collect();
 
-    let interceptor = RequestInterceptor::new(catalog);
+    let mut ws = Arc::new(WsServer::new());
+    let interceptor = RequestInterceptor::new(catalog, ws.clone());
 
     // now, run the server, based on the config
     #[cfg_attr(not(feature = "dns-over-tls"), allow(unused_mut))]
@@ -488,8 +489,10 @@ fn main() {
     // Ideally the processing would be n-threads for receiving, which hand off to m-threads for
     //  request handling. It would generally be the case that n <= m.
     info!("Server starting up");
-    match runtime.block_on(server.block_until_done()) {
-        Ok(()) => {
+    let ws_future = ws.spawn("127.0.0.1:8000");
+
+    match runtime.block_on( futures_util::future::try_join(server.block_until_done(), ws_future)) {
+        Ok(_) => {
             // we're exiting for some reason...
             info!("Hickory DNS {} stopping", hickory_client::version());
         }

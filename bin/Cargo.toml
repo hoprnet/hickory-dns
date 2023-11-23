@@ -113,6 +113,7 @@ clap = { workspace = true, default-features = false, features = [
     "derive",
     "suggestions",
 ] }
+futures-channel = "0.3.29"
 futures-util = { workspace = true, default-features = false, features = [
     "std",
 ] }

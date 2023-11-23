@@ -36,6 +36,8 @@
 #![recursion_limit = "128"]
 #![allow(clippy::redundant_clone)]
 
+mod ws;
+
 use std::{
     env, fmt,
     net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs},
@@ -78,6 +80,8 @@ use hickory_server::{
 
 #[cfg(feature = "dnssec")]
 use {hickory_client::rr::rdata::key::KeyUsage, hickory_server::authority::DnssecAuthority};
+
+use crate::ws::{RequestInterceptor, WsServer};
 
 #[cfg(feature = "dnssec")]
 async fn load_keys<A, L>(
@@ -302,6 +306,11 @@ struct Cli {
     #[clap(short = 'p', long = "port", value_name = "PORT")]
     pub(crate) port: Option<u16>,
 
+    /// Listening port for WebSocket DNS request forwarder.
+    /// Defaults to `8000`.
+    #[clap(long = "ws-port", default_value = "8000", value_name = "WS-PORT")]
+    pub(crate) ws_port: u16,
+
     /// Listening port for DNS over TLS queries,
     /// overrides any value in config file
     #[clap(long = "tls-port", value_name = "TLS-PORT")]
@@ -392,9 +401,13 @@ fn main() {
         .flat_map(|x| (*x, listen_port).to_socket_addrs().unwrap())
         .collect();
 
+    let mut ws = Arc::new(WsServer::new());
+    let ws_listen_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), args.ws_port);
+    let interceptor = RequestInterceptor::new(catalog, ws.clone());
+
     // now, run the server, based on the config
     #[cfg_attr(not(feature = "dns-over-tls"), allow(unused_mut))]
-    let mut server = ServerFuture::new(catalog);
+    let mut server = ServerFuture::new(interceptor);
 
     // load all the listeners
     for udp_socket in &sockaddrs {
@@ -482,8 +495,18 @@ fn main() {
     // Ideally the processing would be n-threads for receiving, which hand off to m-threads for
     //  request handling. It would generally be the case that n <= m.
     info!("Server starting up");
-    match runtime.block_on(server.block_until_done()) {
-        Ok(()) => {
+
+    let ws_future = ws.spawn(
+        runtime
+            .block_on(TcpListener::bind(ws_listen_addr))
+            .expect("cannot bind ws listener"),
+    );
+
+    match runtime.block_on(futures_util::future::try_join(
+        server.block_until_done(),
+        ws_future,
+    )) {
+        Ok(_) => {
             // we're exiting for some reason...
             info!("Hickory DNS {} stopping", hickory_client::version());
         }
@@ -501,9 +524,9 @@ fn main() {
 }
 
 #[cfg(feature = "dns-over-tls")]
-fn config_tls(
+fn config_tls<R: hickory_server::server::RequestHandler>(
     args: &Cli,
-    server: &mut ServerFuture<Catalog>,
+    server: &mut ServerFuture<R>,
     config: &Config,
     tls_cert_config: &TlsCertConfig,
     zone_dir: &Path,
@@ -554,9 +577,9 @@ fn config_tls(
 }
 
 #[cfg(feature = "dns-over-https")]
-fn config_https(
+fn config_https<R: hickory_server::server::RequestHandler>(
     args: &Cli,
-    server: &mut ServerFuture<Catalog>,
+    server: &mut ServerFuture<R>,
     config: &Config,
     tls_cert_config: &TlsCertConfig,
     zone_dir: &Path,
@@ -620,9 +643,9 @@ fn config_https(
 }
 
 #[cfg(feature = "dns-over-quic")]
-fn config_quic(
+fn config_quic<R: hickory_server::server::RequestHandler>(
     args: &Cli,
-    server: &mut ServerFuture<Catalog>,
+    server: &mut ServerFuture<R>,
     config: &Config,
     tls_cert_config: &TlsCertConfig,
     zone_dir: &Path,

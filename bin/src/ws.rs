@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, error, info};
@@ -32,7 +33,8 @@ impl<D: RequestHandler> RequestHandler for RequestInterceptor<D> {
     ) -> ResponseInfo {
         let qry = request.query();
         let msg = format!(
-            "[\"{}\",\"{}\",\"{}\",\"{}\"]",
+            "[{}, \"{}\",\"{}\",\"{}\",\"{}\"]",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis(),
             request.src().ip(),
             qry.query_class(),
             qry.query_type(),

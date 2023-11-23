@@ -33,7 +33,7 @@ impl<D: RequestHandler> RequestHandler for RequestInterceptor<D> {
     ) -> ResponseInfo {
         let qry = request.query();
         let msg = format!(
-            "[{}, \"{}\",\"{}\",\"{}\",\"{}\"]",
+            "[{}, \"{}\", \"{}\", \"{}\", \"{}\"]",
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis(),
             request.src().ip(),
             qry.query_class(),

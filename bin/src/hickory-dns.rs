@@ -308,7 +308,7 @@ struct Cli {
 
     /// Listening port for WebSocket DNS request forwarder.
     /// Defaults to `8000`.
-    #[clap(long = "ws-port", default_value = 8000, value_name = "WS-PORT")]
+    #[clap(long = "ws-port", default_value = "8000", value_name = "WS-PORT")]
     pub(crate) ws_port: u16,
 
     /// Listening port for DNS over TLS queries,

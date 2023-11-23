@@ -306,6 +306,11 @@ struct Cli {
     #[clap(short = 'p', long = "port", value_name = "PORT")]
     pub(crate) port: Option<u16>,
 
+    /// Listening port for WebSocket DNS request forwarder.
+    /// Defaults to `8000`.
+    #[clap(long = "ws-port", default_value = 8000, value_name = "WS-PORT")]
+    pub(crate) ws_port: u16,
+
     /// Listening port for DNS over TLS queries,
     /// overrides any value in config file
     #[clap(long = "tls-port", value_name = "TLS-PORT")]
@@ -397,6 +402,7 @@ fn main() {
         .collect();
 
     let mut ws = Arc::new(WsServer::new());
+    let ws_listen_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), args.ws_port);
     let interceptor = RequestInterceptor::new(catalog, ws.clone());
 
     // now, run the server, based on the config
@@ -489,9 +495,17 @@ fn main() {
     // Ideally the processing would be n-threads for receiving, which hand off to m-threads for
     //  request handling. It would generally be the case that n <= m.
     info!("Server starting up");
-    let ws_future = ws.spawn("0.0.0.0:8000");
 
-    match runtime.block_on( futures_util::future::try_join(server.block_until_done(), ws_future)) {
+    let ws_future = ws.spawn(
+        runtime
+            .block_on(TcpListener::bind(ws_listen_addr))
+            .expect("cannot bind ws listener"),
+    );
+
+    match runtime.block_on(futures_util::future::try_join(
+        server.block_until_done(),
+        ws_future,
+    )) {
         Ok(_) => {
             // we're exiting for some reason...
             info!("Hickory DNS {} stopping", hickory_client::version());

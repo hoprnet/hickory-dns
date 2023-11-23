@@ -1,20 +1,20 @@
+use async_trait::async_trait;
+use futures_channel::mpsc::UnboundedSender;
+use futures_util::lock::Mutex;
+use futures_util::StreamExt;
+use hickory_proto::error::ProtoError;
+use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use async_trait::async_trait;
-use futures_channel::mpsc::UnboundedSender;
-use futures_util::StreamExt;
-use futures_util::lock::Mutex;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, error, info};
-use hickory_proto::error::ProtoError;
-use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
 
 pub(crate) struct RequestInterceptor<D: RequestHandler> {
     downstream: D,
-    ws: Arc<WsServer>
+    ws: Arc<WsServer>,
 }
 
 impl<D: RequestHandler> RequestInterceptor<D> {
@@ -25,14 +25,26 @@ impl<D: RequestHandler> RequestInterceptor<D> {
 
 #[async_trait]
 impl<D: RequestHandler> RequestHandler for RequestInterceptor<D> {
-    async fn handle_request<R: ResponseHandler>(&self, request: &Request, response_handle: R) -> ResponseInfo {
+    async fn handle_request<R: ResponseHandler>(
+        &self,
+        request: &Request,
+        response_handle: R,
+    ) -> ResponseInfo {
         let qry = request.query();
-        let msg = format!("[\"{}\",\"{}\",\"{}\",\"{}\"]", request.src().ip(), qry.query_class(), qry.query_type(), qry.name());
+        let msg = format!(
+            "[\"{}\",\"{}\",\"{}\",\"{}\"]",
+            request.src().ip(),
+            qry.query_class(),
+            qry.query_type(),
+            qry.name()
+        );
 
         debug!("intercepted request from {msg}");
         self.ws.send_message(request.src().ip(), msg).await;
 
-        self.downstream.handle_request(request, response_handle).await
+        self.downstream
+            .handle_request(request, response_handle)
+            .await
     }
 }
 
@@ -68,24 +80,32 @@ impl WsServer {
         }
     }
 
-    pub(crate) async fn spawn(&self, binding: &str) -> Result<(), ProtoError> {
-        let bound_socket = TcpListener::bind(binding).await?;
-        info!("WS listening on {binding}");
+    pub(crate) async fn spawn(&self, bound_socket: TcpListener) -> Result<(), ProtoError> {
+        info!("WS listening on {}", bound_socket.local_addr().unwrap());
 
         while let Ok((stream, addr)) = bound_socket.accept().await {
-            self.accept(addr, stream).await.map_err(|e| std::io::Error::new(ErrorKind::Other, e))?;
+            self.accept(addr, stream)
+                .await
+                .map_err(|e| std::io::Error::new(ErrorKind::Other, e))?;
         }
 
         debug!("WS listening done");
         Ok(())
     }
 
-    async fn accept(&self, addr: SocketAddr, stream: TcpStream) -> Result<(), tokio_tungstenite::tungstenite::Error>{
+    async fn accept(
+        &self,
+        addr: SocketAddr,
+        stream: TcpStream,
+    ) -> Result<(), tokio_tungstenite::tungstenite::Error> {
         let ws_stream = tokio_tungstenite::accept_async(stream).await?;
         let (write, read) = ws_stream.split();
 
         let (tx, rx) = futures_channel::mpsc::unbounded();
-        self.connections.lock().await.insert(addr.ip().to_string(), tx);
+        self.connections
+            .lock()
+            .await
+            .insert(addr.ip().to_string(), tx);
         debug!("WS peer {addr} connected");
 
         let peer_map = self.connections.clone();

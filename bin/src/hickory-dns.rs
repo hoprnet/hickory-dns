@@ -489,7 +489,7 @@ fn main() {
     // Ideally the processing would be n-threads for receiving, which hand off to m-threads for
     //  request handling. It would generally be the case that n <= m.
     info!("Server starting up");
-    let ws_future = ws.spawn("127.0.0.1:8000");
+    let ws_future = ws.spawn("0.0.0.0:8000");
 
     match runtime.block_on( futures_util::future::try_join(server.block_until_done(), ws_future)) {
         Ok(_) => {
